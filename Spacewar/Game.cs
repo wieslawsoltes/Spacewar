@@ -184,6 +184,10 @@ namespace Spacewar
 
         public Spaceship()
         {
+            // Set the spaceship's size
+            Width = 100;
+            Height = 100;
+            
             Direction = 0;
             Mass = 1.0;
             IsDestroyed = false;
