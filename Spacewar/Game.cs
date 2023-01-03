@@ -73,6 +73,12 @@ namespace Spacewar
                 }
             }
 
+            // Invalidate the visuals of the spaceships and missiles
+            _player1.InvalidateVisual();
+            _player2.InvalidateVisual();
+            if (_missile1 != null) _missile1.InvalidateVisual();
+            if (_missile2 != null) _missile2.InvalidateVisual();
+
             // Check if the game is over
             if (_player1.IsDead() || _player2.IsDead())
             {
