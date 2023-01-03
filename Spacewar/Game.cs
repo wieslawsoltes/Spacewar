@@ -4,44 +4,74 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using System;
+using Avalonia.Controls.Shapes;
 
 namespace Spacewar
 {
     public class Game : Canvas
     {
-        private readonly DispatcherTimer _timer;
         private Spaceship _player1;
         private Spaceship _player2;
         private Missile _missile1;
         private Missile _missile2;
+        private Ellipse _planet;
+        private TextBlock _gameOverText;
+        private const double GRAVITY = 1.0; // gravitational constant
 
         public Game()
         {
+            // Create the planet
+            _planet = new Ellipse { Width = 100, Height = 100, Fill = Brushes.Gray };
+            Children.Add(_planet);
+
             // Create the player spaceships
-            _player1 = new Spaceship { Position = new Point(50, 50) };
-            _player2 = new Spaceship { Position = new Point(450, 50) };
+            _player1 = new Spaceship
+            {
+                Position = new Point(50, 50), Mass = 1.0, Velocity = new Vector(0, 0), Direction = 0
+            };
+            _player2 = new Spaceship
+            {
+                Position = new Point(450, 50), Mass = 1.0, Velocity = new Vector(0, 0), Direction = 0
+            };
 
             // Add the spaceships to the window
             Children.Add(_player1);
             Children.Add(_player2);
 
+            // Add the game over text
+            _gameOverText = new TextBlock
+            {
+                Text = "",
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            };
+            Children.Add(_gameOverText);
+            
             // Start the game loop
-            // Create the timer and set its interval
-            _timer = new DispatcherTimer();
-            _timer.Interval = TimeSpan.FromSeconds(1.0 / 60.0); // 60 FPS
-            _timer.Tick += GameLoop;
-            _timer.Start();
+            DispatcherTimer timer = new DispatcherTimer();
+            timer.Interval = TimeSpan.FromSeconds(1.0 / 60.0); // 60 FPS
+            timer.Tick += GameLoop;
+            timer.Start();
         }
-
+        
+        protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnAttachedToVisualTree(e);
+            // Make the game board focusable
+            this.Focusable = true;
+            // Give keyboard focus to the game board
+            this.Focus();
+        }
+        
         private void GameLoop(object sender, EventArgs e)
         {
             // Update the game state
-            _player1.Update();
-            _player2.Update();
+            _player1.Update(_planet, GRAVITY);
+            _player2.Update(_planet, GRAVITY);
 
             if (_missile1 != null)
             {
-                _missile1.Update();
+                _missile1.Update(_planet, GRAVITY);
 
                 if (_missile1.IsOutOfBounds())
                 {
@@ -52,13 +82,14 @@ namespace Spacewar
                 {
                     Children.Remove(_missile1);
                     _missile1 = null;
+                    _player2.IsDestroyed = true;
                     Children.Remove(_player2);
                 }
             }
 
             if (_missile2 != null)
             {
-                _missile2.Update();
+                _missile2.Update(_planet, GRAVITY);
 
                 if (_missile2.IsOutOfBounds())
                 {
@@ -69,6 +100,7 @@ namespace Spacewar
                 {
                     Children.Remove(_missile2);
                     _missile2 = null;
+                    _player1.IsDestroyed = true;
                     Children.Remove(_player1);
                 }
             }
@@ -82,7 +114,23 @@ namespace Spacewar
             // Check if the game is over
             if (_player1.IsDead() || _player2.IsDead())
             {
-                // TODO:
+                // Stop the game loop
+                DispatcherTimer timer = (DispatcherTimer)sender;
+                timer.Stop();
+
+                // Update the game over text
+                if (_player1.IsDead() && _player2.IsDead())
+                {
+                    _gameOverText.Text = "It's a draw!";
+                }
+                else if (_player1.IsDead())
+                {
+                    _gameOverText.Text = "Player 2 wins!";
+                }
+                else if (_player2.IsDead())
+                {
+                    _gameOverText.Text = "Player 1 wins!";
+                }
             }
         }
 
@@ -90,15 +138,15 @@ namespace Spacewar
         {
             if (e.Key == Key.Left)
             {
-                _player1.ThrustLeft();
+                _player1.TurnLeft();
             }
             else if (e.Key == Key.Right)
             {
-                _player1.ThrustRight();
+                _player1.TurnRight();
             }
             else if (e.Key == Key.Up)
             {
-                _player1.ThrustForward();
+                _player1.Accelerate();
             }
             else if (e.Key == Key.Space)
             {
@@ -108,15 +156,15 @@ namespace Spacewar
 
             if (e.Key == Key.A)
             {
-                _player2.ThrustLeft();
+                _player2.TurnLeft();
             }
             else if (e.Key == Key.D)
             {
-                _player2.ThrustRight();
+                _player2.TurnRight();
             }
             else if (e.Key == Key.W)
             {
-                _player2.ThrustForward();
+                _player2.Accelerate();
             }
             else if (e.Key == Key.LeftShift)
             {
@@ -129,21 +177,27 @@ namespace Spacewar
     public class Spaceship : Control
     {
         public Point Position { get; set; }
+        public Vector Velocity { get; set; }
         public double Direction { get; set; }
-        public double Speed { get; set; }
+        public double Mass { get; set; }
+        public bool IsDestroyed { get; set; }
 
         public Spaceship()
         {
             Direction = 0;
-            Speed = 0;
+            Mass = 1.0;
+            IsDestroyed = false;
         }
 
-        public void Update()
+        public void Update(Ellipse planet, double gravity)
         {
-            // Update the spaceship's position based on its direction and speed
-            Position = new Point(
-                Position.X + Math.Cos(Direction) * Speed,
-                Position.Y + Math.Sin(Direction) * Speed);
+            // Calculate the gravitational force acting on the spaceship
+            Vector r = new Vector(Position.X - planet.Width / 2, Position.Y - planet.Height / 2);
+            Vector force = r * (-gravity * Mass / Math.Pow(r.Length, 3));
+
+            // Update the velocity and position of the spaceship
+            Velocity += force;
+            Position += Velocity;
 
             // Clamp the spaceship's position to the window bounds
             Position = new Point(
@@ -151,87 +205,91 @@ namespace Spacewar
                 Math.Max(0, Math.Min(Position.Y, Height)));
         }
 
-        public void ThrustLeft()
+        public void TurnLeft()
         {
             Direction -= 0.1;
         }
 
-        public void ThrustRight()
+        public void TurnRight()
         {
             Direction += 0.1;
         }
 
-        public void ThrustForward()
+        public void Accelerate()
         {
-            Speed += 0.1;
+            Velocity += new Vector(0.1 * Math.Cos(Direction), 0.1 * Math.Sin(Direction));
         }
 
         public Missile FireMissile()
         {
             return new Missile
             {
-                Position = new Point(Position.X + 20, Position.Y),
-                Direction = Direction,
-                Speed = Speed + 5
+                Position = Position,
+                Velocity = Velocity + new Vector(20 * Math.Cos(Direction), 20 * Math.Sin(Direction)),
+                Mass = 0.1
             };
         }
 
         public bool IsDead()
         {
-            return false;
+            return IsDestroyed;
         }
-
+        
         public override void Render(DrawingContext context)
         {
-            // Draw the spaceship body
-            context.DrawEllipse(Brushes.White, null, new Point(20, 20), 20, 20);
-
-            // Draw the spaceship thrusters
-            context.DrawLine(new Pen(Brushes.Red, 2), new Point(20, 40), new Point(10, 30));
-            context.DrawLine(new Pen(Brushes.Red, 2), new Point(20, 40), new Point(30, 30));
+            // Push a translate transform onto the drawing context's transform stack
+            using var _ = context.PushPostTransform(Matrix.CreateTranslation(Position.X, Position.Y));
+            
+            context.DrawLine(new Pen(Brushes.Red, 2), new Point(0, 0),
+                new Point(20 * Math.Cos(Direction), 20 * Math.Sin(Direction)));
         }
     }
 
     public class Missile : Control
     {
         public Point Position { get; set; }
-        public double Direction { get; set; }
-        public double Speed { get; set; }
+        public Vector Velocity { get; set; }
+        public double Mass { get; set; }
 
         public Missile()
         {
-            Width = 10;
-            Height = 10;
+            Mass = 0.1;
         }
 
-        public void Update()
+        public void Update(Ellipse planet, double gravity)
         {
-            // Update the missile's position based on its direction and speed
-            Position = new Point(
-                Position.X + Math.Cos(Direction) * Speed,
-                Position.Y + Math.Sin(Direction) * Speed);
+            // Calculate the gravitational force acting on the missile
+            Vector r = new Vector(Position.X - planet.Width / 2, Position.Y - planet.Height / 2);
+            Vector force = r * (-gravity * Mass / Math.Pow(r.Length, 3));
 
-            // Clamp the missile's position to the window bounds
-            Position = new Point(
-                Math.Max(0, Math.Min(Position.X, Width)),
-                Math.Max(0, Math.Min(Position.Y, Height)));
-        }
-        public bool CollidesWith(Spaceship spaceship)
-        {
-            // Check if the missile collides with the spaceship
-            return Bounds.Intersects(spaceship.Bounds);
+            // Update the velocity and position of the missile
+            Velocity += force;
+            Position += Velocity;
         }
 
         public bool IsOutOfBounds()
         {
-            // Check if the missile is out of bounds
             return Position.X < 0 || Position.X > Width || Position.Y < 0 || Position.Y > Height;
+        }
+
+        public bool CollidesWith(Spaceship spaceship)
+        {
+            // Create a bounding rectangle for the missile
+            Rect missileRect = new Rect(Position.X - 2, Position.Y - 2, 4, 4);
+
+            // Create a bounding rectangle for the spaceship
+            Rect spaceshipRect = new Rect(spaceship.Position.X, spaceship.Position.Y, spaceship.Width, spaceship.Height);
+
+            // Check if the rectangles intersect
+            return missileRect.Intersects(spaceshipRect);
         }
 
         public override void Render(DrawingContext context)
         {
-            // Draw the missile
-            context.DrawEllipse(Brushes.Yellow, null, new Point(5, 5), 5, 5);
+            // Push a translate transform onto the drawing context's transform stack
+            using var _ = context.PushPostTransform(Matrix.CreateTranslation(Position.X, Position.Y));
+            
+            context.DrawEllipse(Brushes.Yellow, null, new Point(0, 0), 2, 2);
         }
     }
 }
