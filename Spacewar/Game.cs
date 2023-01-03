@@ -193,7 +193,17 @@ namespace Spacewar
         {
             // Calculate the gravitational force acting on the spaceship
             Vector r = new Vector(Position.X - planet.Width / 2, Position.Y - planet.Height / 2);
-            Vector force = r * (-gravity * Mass / Math.Pow(r.Length, 3));
+            Vector force;
+            if (r.Length == 0)
+            {
+                // Set the force vector to a default value
+                force = new Vector(0, 0);
+            }
+            else
+            {
+                // Calculate the force vector
+                force = r * (-gravity * Mass / Math.Pow(r.Length, 3));
+            }
 
             // Update the velocity and position of the spaceship
             Velocity += force;
